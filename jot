@@ -138,21 +138,10 @@ fi
 ;;
 "-s" | "--search")
 shift
-if ! [[ "$1" =~ ^[0-9]+$ ]]; then
 if [ "$1" = "${1,,}" ]; then
 grep -i "$1" "$configPath/notes" | sed 's/^[0-9]\+: //g'
 else
 grep "$1" "$configPath/notes" | sed 's/^[0-9]\+: //g'
-fi
-else
-if [ $1 -gt $max -a $max -ne 0 ]; then
-echo "Number out of range. There can only be $max notes."
-fi
-if [ $1 -lt 10 ]; then
-grep "^0${1##0}:" "$configPath/notes" | sed 's/^[0-9]\+: //g'
-else
-grep "^${1##0}:" "$configPath/notes" | sed 's/^[0-9]\+: //g'
-fi
 fi
 ;;
 *)
