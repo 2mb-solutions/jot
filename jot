@@ -29,25 +29,48 @@ For more information, please refer to http://unlicense.org/
 EOF
 }
 
+show_help()
+{
+cat << EOF
+${0##*/} released under the terms of the unlicense.
+${0##*/} options:
+With no arguments, display all notes.
+-c or --clipboard: Place results in the clipboard as well as stdout. Requires xclip.
+-d or --delete number: Delete the note with the corresponding number.
+-h or --help: This help screen.
+-l or --license: Display license information.
+-n or --numbered: Display all notes with leading numbers.
+-s or --search criteria: Search for matching text. All lowercase will match anything. Uppercase strings are search specific.
+
+Settings are stored in the $configPath/config file. Possible options are:
+clipboard=setting Where setting is the clipboard to be used by xclip. Type man xclip for more information.
+The default is clipboard.
+max=number The maximum notes to be stored. When the max number is reached, note 1 will be dropped. The default, 0, stores all
+notes, deleting nothing.
+
+To write a new note, simply type ${0##*/} and the text of your note. Remember to quote or escape any special characters such as #.
+EOF
+}
+
 renumber()
 {
-local txt
-local i=1
-while read -r line ; do
-if [ $i -lt 10 ]; then
-txt="${txt}0${i}: $(echo "$line" | sed 's/^[0-9]\+: //')\n"
-else
-txt="${txt}${i}: $(echo "$line" | sed 's/^[0-9]\+: //')\n"
-fi
-((i++))
-done < "$configPath/notes"
-echo -e "$txt" | sed '/^$/d' > "$configPath/notes"
+    local txt
+    local i=1
+    while read -r line ; do
+        if [ $i -lt 10 ]; then
+            txt="${txt}0${i}: $(echo "$line" | sed 's/^[0-9]\+: //')\n"
+        else
+            txt="${txt}${i}: $(echo "$line" | sed 's/^[0-9]\+: //')\n"
+        fi
+    ((i++))
+    done < "$configPath/notes"
+    echo -e "$txt" | sed '/^$/d' > "$configPath/notes"
 }
 
 # Set up the configuration directory information
 if [ -z "$XDG_CONFIG_HOME" ]; then
     configPath="$HOME/.config/jot"
-xdgPath="$HOME/.config"
+    xdgPath="$HOME/.config"
 else
     configPath="$XDG_CONFIG_HOME/jot"
     xdgPath="$XDG_CONFIG_HOME"
@@ -58,107 +81,119 @@ fi
  
 # Load existing settings.
 if [ -f "$configPath/config" ]; then
-source "$configPath/config"
+    source "$configPath/config"
 fi
 
 # Set defaults
+clipboard="${clipboard:-clipboard}"
 max="${max:-0}"
+
+# Check if results should be placed in clipboard.
+unset copy
+if [[ "$1" = +(-c|-x|--clipboard|--xclip) ]]; then
+    shift
+    copy="true"
+fi
 
 # If no args, show all notes.
 if [ $# -eq 0 ]; then
-if [ -f "$configPath/notes" ]; then
-sed 's/^[0-9]\+: //g' "$configPath/notes"
-else
-echo "No notes to show yet. To add one just type jot and the text of the note."
-fi
-exit 0
+    if [ -f "$configPath/notes" ]; then
+        if [ "$copy" = "true" ]; then
+            sed 's/^[0-9]\+: //g' "$configPath/notes" | xclip -selection $clipboard
+        fi
+        sed 's/^[0-9]\+: //g' "$configPath/notes"
+    else
+        echo "No notes to show yet. To add one just type jot and the text of the note."
+    fi
+    exit 0
 fi
 
 # If $1 is a number, display the note of that number.
 if [[ "$1" =~ ^[0-9]+$ ]]; then
-if [ $1 -lt 10 ]; then
-grep "^0$1" "$configPath/notes" | sed  's/^[0-9]\+: //'
-else
-grep "^$1" "$configPath/notes" | sed  's/^[0-9]\+: //'
-fi
-exit 0
+    if [ $1 -lt 10 ]; then
+        if [ "$copy" = "true" ]; then
+            grep "^0$1" "$configPath/notes" | sed  's/^[0-9]\+: //' | xclip -selection $clipboard
+        fi
+        grep "^0$1" "$configPath/notes" | sed  's/^[0-9]\+: //'
+    else
+        if [ "$copy" = "true" ]; then
+            grep "^$1" "$configPath/notes" | sed  's/^[0-9]\+: //' | xclip -selection $clipboard
+        fi
+        grep "^$1" "$configPath/notes" | sed  's/^[0-9]\+: //'
+    fi
+    exit 0
 fi
 
 # Do stuff with entered options. Everything is controled by $1
 case "$1" in
-"-d" | "--delete")
-shift
-if ! [[ "$1" =~ ^[0-9]+$ ]]; then
-echo "$1 must be followed by a number. E.g. to delete note 2 type ${0##*/} -d 2"
-else
-if [ $1 -gt $max -a $max -ne 0 ]; then
-echo "Number out of range. There can only be $max notes."
-exit 0
-fi
-if [ $1 -lt 10 ]; then
-sed -i "/^0$1: /d" "$configPath/notes"
-else
-sed -i "/^$1: /d" "$configPath/notes"
-fi
-if [ $? != 0 ]; then
-echo "Note $1 not found."
-exit 0
-fi
-echo "Note $1 removed."
-renumber
-fi
-;;
-"-h" | "--help")
-cat << EOF
-${0##*/} released under the terms of the unlicense.
-${0##*/} options:
-With no arguments, display all notes.
--d or --delete number: Delete the note with the corresponding number.
--h or --help: This help screen.
--l or --license: Display license information.
--n or --numbered: Display all notes with leading numbers.
--s or --search "criteria": Search for matching text, or if a number is specified, retrieve the note with that number.
-
-Settings are stored in the $configPath/config file. Possible options are:
-max=number The maximum notes to be stored. When the max number is reached, note 1 will be dropped. The default, 0, stores all
-notes, deleting nothing.
-
-To write a new note, simply type ${0##*/} and the text of your note. Remember to quote or escape any special characters such as #.
-EOF
-;;
-"-l" | "--license")
-show_license
-;;
-"-n" | "--numbered")
-if [ -f "$configPath/notes" ]; then
-cat "$configPath/notes"
-else
-echo "No notes to show yet. To add one just type jot and the text of the note."
-fi
-;;
-"-s" | "--search")
-shift
-if [ "$1" = "${1,,}" ]; then
-grep -i "$1" "$configPath/notes" | sed 's/^[0-9]\+: //g'
-else
-grep "$1" "$configPath/notes" | sed 's/^[0-9]\+: //g'
-fi
-;;
-*)
-if [ -f "$configPath/notes" ]; then
-newNoteNumber="$(tail -n1 "$configPath/notes" | cut -d: -f1 | sed 's/^0\+//')"
-((newNoteNumber++))
-else
-newNoteNumber=1
-fi
-if [ $newNoteNumber -gt $max -a $max -gt 0 ]; then
-sed -i '/^01: /d' "$configPath/notes"
-renumber
-newNoteNumber=$max
-fi
-if [ $newNoteNumber -lt 10 ]; then
-newNoteNumber=0$newNoteNumber
-fi
-echo "$newNoteNumber: $@" >> $configPath/notes && echo "Note $newNoteNumber added."
+    "-d" | "--delete")
+        shift
+        if ! [[ "$1" =~ ^[0-9]+$ ]]; then
+            echo "$1 must be followed by a number. E.g. to delete note 2 type ${0##*/} -d 2"
+        else
+            if [ $1 -gt $max -a $max -ne 0 ]; then
+                echo "Number out of range. There can only be $max notes."
+                exit 0
+            fi
+            if [ $1 -lt 10 ]; then
+                sed -i "/^0$1: /d" "$configPath/notes"
+            else
+                sed -i "/^$1: /d" "$configPath/notes"
+            fi
+            if [ $? != 0 ]; then
+                echo "Note $1 not found."
+                exit 0
+            fi
+            echo "Note $1 removed."
+            renumber
+        fi
+    ;;
+    "-h" | "--help")
+        show_help
+    ;;
+    "-l" | "--license")
+        show_license
+    ;;
+    "-n" | "--numbered")
+        if [ -f "$configPath/notes" ]; then
+            if [ "$copy" = "true" ]; then
+                cat "$configPath/notes" | xclip -selection $clipboard
+            fi
+            cat "$configPath/notes"
+        else
+            echo "No notes to show yet. To add one just type jot and the text of the note."
+        fi
+    ;;
+    "-s" | "--search")
+        shift
+        if [ "$1" = "${1,,}" ]; then
+            if [ "$copy" = "true" ]; then
+                grep -i "$1" "$configPath/notes" | sed 's/^[0-9]\+: //g' | xclip -selection $clipboard
+            fi
+            grep -i "$1" "$configPath/notes" | sed 's/^[0-9]\+: //g'
+        else
+            if [ "$copy" = "true" ]; then
+                grep "$1" "$configPath/notes" | sed 's/^[0-9]\+: //g' | xclip -selection $clipboard
+            fi
+            grep "$1" "$configPath/notes" | sed 's/^[0-9]\+: //g'
+        fi
+    ;;
+    *)
+        if [ -f "$configPath/notes" ]; then
+            newNoteNumber="$(tail -n1 "$configPath/notes" | cut -d: -f1 | sed 's/^0\+//')"
+            ((newNoteNumber++))
+        else
+            newNoteNumber=1
+        fi
+        if [ $newNoteNumber -gt $max -a $max -gt 0 ]; then
+            sed -i '/^01: /d' "$configPath/notes"
+            renumber
+            newNoteNumber=$max
+        fi
+        if [ $newNoteNumber -lt 10 ]; then
+            newNoteNumber=0$newNoteNumber
+        fi
+        echo "$newNoteNumber: $@" >> $configPath/notes && echo "Note $newNoteNumber added."
+    ;;
 esac
 exit 0
